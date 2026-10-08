@@ -1,28 +1,27 @@
 #include <Headers/plugin_start.hpp>
+#include <Headers/kern_api.hpp>
 #include "BridgeSpoofer.hpp"
 
-// Define plugin metadata configuration required by Lilu
-PluginConfiguration ADDPR(config) = {
+static BridgeSpoofer bridgeSpoofer;
+
+static const char *bootargOff[]   { "-bridgeoff" };
+static const char *bootargDebug[] { "-bridgedbg" };
+static const char *bootargBeta[]  { "-bridgebeta" };
+
+// Lilu plugin configuration (field order must match PluginConfiguration in plugin_start.hpp)
+PluginConfiguration ADDPR(config) {
     xStringify(PRODUCT_NAME),
-    "1.0.0",
-    BootArgs::getBootArgVal("-bridgeoff"),
-    -1,
-    CPU_GEN_ALL,
-    nullptr,
-    0,
-    nullptr,
-    0,
-    nullptr
+    parseModuleVersion("1.0.0"),
+    LiluAPI::AllowNormal | LiluAPI::AllowInstallerRecovery | LiluAPI::AllowSafeMode,
+    bootargOff,
+    arrsize(bootargOff),
+    bootargDebug,
+    arrsize(bootargDebug),
+    bootargBeta,
+    arrsize(bootargBeta),
+    KernelVersion::HighSierra,   // first macOS on T2 Macs
+    KernelVersion::Tahoe,
+    []() {
+        bridgeSpoofer.init();
+    }
 };
-
-static BridgeSpoofer bridgeSpooferInstance;
-
-void pluginStart() {
-    DBGLOG("bridgespoof", "pluginStart loaded");
-    bridgeSpooferInstance.init();
-}
-
-void pluginStop() {
-    DBGLOG("bridgespoof", "pluginStop unloaded");
-    bridgeSpooferInstance.deinit();
-}

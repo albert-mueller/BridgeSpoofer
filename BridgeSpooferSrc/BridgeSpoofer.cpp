@@ -2,56 +2,87 @@
 #include <Headers/kern_api.hpp>
 #include <Headers/kern_util.hpp>
 
-// Initialize static member variables
-mach_vm_address_t BridgeSpoofer::orgExternalMethod = 0;
+mach_vm_address_t BridgeSpoofer::orgExternalMethod {0};
 
-void BridgeSpoofer::init() {
-    DBGLOG("bridgespoof", "Initializing BridgeSpoofer plugin for j140kap / MacBookAir8,1");
+// User client classes we want to inspect (verify the exact names with `ioreg -l` on the target machine)
+static const char *targetClients[] {
+    "AppleEmbeddedOSSupportClient",
+    "AppleEmbeddedDeviceClient",
+};
 
-    // XNU Kernel symbol for IOUserClient::externalMethod
-    const char *symbol = "__ZN12IOUserClient14externalMethodEjP25IOExternalMethodArgumentsP20IOExternalMethodDispatchP8OSObjectPv";
-
-    if (korg::routeFunction(kernel_function_t(symbol), (void *)ourExternalMethod, (void **)&orgExternalMethod)) {
-        SYSLOG("bridgespoof", "Successfully routed IOUserClient::externalMethod.");
-    } else {
-        SYSLOG("bridgespoof", "Failed to route IOUserClient::externalMethod.");
-    }
+static bool isTargetClient(const IOUserClient *client) {
+    if (!client)
+        return false;
+    auto meta = client->getMetaClass();
+    if (!meta)
+        return false;
+    const char *name = meta->getClassName();
+    if (!name)
+        return false;
+    for (auto targetName : targetClients)
+        if (strcmp(name, targetName) == 0)
+            return true;
+    return false;
 }
 
-void BridgeSpoofer::deinit() {
-    DBGLOG("bridgespoof", "Deinitializing BridgeSpoofer plugin.");
+void BridgeSpoofer::init() {
+    DBGLOG("bridgespoof", "Initializing BridgeSpoofer plugin");
+
+    // Kernel functions can only be routed once Lilu's patcher is ready, not directly in pluginStart
+    lilu.onPatcherLoadForce([](void *user, KernelPatcher &patcher) {
+        static_cast<BridgeSpoofer *>(user)->processKernel(patcher);
+    }, this);
+}
+
+void BridgeSpoofer::processKernel(KernelPatcher &patcher) {
+    // IOUserClient::externalMethod(uint32_t, IOExternalMethodArguments*, IOExternalMethodDispatch*, OSObject*, void*)
+    KernelPatcher::RouteRequest request {
+        "__ZN12IOUserClient14externalMethodEjP25IOExternalMethodArgumentsP24IOExternalMethodDispatchP8OSObjectPv",
+        ourExternalMethod, orgExternalMethod
+    };
+
+    if (patcher.routeMultiple(KernelPatcher::KernelID, &request, 1)) {
+        SYSLOG("bridgespoof", "Successfully routed IOUserClient::externalMethod");
+    } else {
+        SYSLOG("bridgespoof", "Failed to route IOUserClient::externalMethod (error %d)", static_cast<int>(patcher.getError()));
+        patcher.clearError();
+    }
 }
 
 IOReturn BridgeSpoofer::ourExternalMethod(IOUserClient *client, uint32_t selector,
                                           IOExternalMethodArguments *arguments,
                                           IOExternalMethodDispatch *dispatch,
                                           OSObject *target, void *reference) {
-    
-    // 1. Let the original driver method run first to generate the status data structure
+    // 1. Let the original driver method run first so the output data exists
     IOReturn result = FunctionCast(ourExternalMethod, orgExternalMethod)(
         client, selector, arguments, dispatch, target, reference
     );
 
-    // 2. If the call succeeded and output buffers are present, check the client context
-    if (result == kIOReturnSuccess && arguments && arguments->structureOutput) {
-        if (client) {
-            const OSSymbol *className = client->copyClassName();
-            if (className) {
-                // Target the T2 / Apple Embedded OS communication clients specifically
-                if (className->isEqualTo("AppleEmbeddedOSSupportClient") || 
-                    className->isEqualTo("AppleEmbeddedDeviceClient")) {
-                    
-                    DBGLOG("bridgespoof", "Intercepted target T2 client request. Selector: %u", selector);
-                    
-                    // Note: You can inspect/modify arguments->structureOutput and 
-                    // arguments->structureOutputSize here before it returns to remotectl.
-                }
-                className->release();
-            }
-        }
+    // 2. This hook sees EVERY user client call in the system, so leave as fast as possible
+    //    for everything that isn't ours. No logging here, or the log gets flooded.
+    if (!isTargetClient(client))
+        return result;
+
+    if (result != kIOReturnSuccess) {
+        DBGLOG("bridgespoof", "T2 client selector %u failed: 0x%x", selector, result);
+        return result;
     }
-    else {
-        SYSLOG("Call/output buffers are not present"); // I'm writing in C++ for the first time without AI, but I want to show that there needs to be some error handling. Please verify the syntax and fix if something's wrong.
+
+    if (!arguments) {
+        DBGLOG("bridgespoof", "T2 client selector %u: no arguments", selector);
+        return result;
+    }
+
+    if (arguments->structureOutput && arguments->structureOutputSize > 0) {
+        DBGLOG("bridgespoof", "T2 client selector %u: inline output, %u bytes",
+               selector, arguments->structureOutputSize);
+        // Inspect/modify arguments->structureOutput here
+    } else if (arguments->structureOutputDescriptor) {
+        // Large outputs (> 4 KB) arrive through a memory descriptor instead of structureOutput
+        DBGLOG("bridgespoof", "T2 client selector %u: descriptor output, %u bytes",
+               selector, arguments->structureOutputDescriptorSize);
+    } else {
+        DBGLOG("bridgespoof", "T2 client selector %u: no structure output", selector);
     }
 
     return result;

@@ -1,19 +1,21 @@
 #ifndef BRIDGESPOOFER_HPP
 #define BRIDGESPOOFER_HPP
 
-#include <Headers/plugin_start.hpp>
-#include <IOKit/IOUserClient.h>
-#include <IOKit/IOExternalMethodArguments.h>
+#include <Headers/kern_patcher.hpp>
+#include <IOKit/IOUserClient.h>   // also defines IOExternalMethodArguments / IOExternalMethodDispatch
 
 class BridgeSpoofer {
 public:
     void init();
-    void deinit();
 
-    // Trampoline pointer for the original kernel function
+private:
+    // Called by Lilu once the kernel patcher is ready
+    void processKernel(KernelPatcher &patcher);
+
+    // Trampoline to the original IOUserClient::externalMethod
     static mach_vm_address_t orgExternalMethod;
 
-    // Hooked function handler
+    // Hook. externalMethod is a C++ member function, so 'this' (the client) comes first.
     static IOReturn ourExternalMethod(IOUserClient *client, uint32_t selector,
                                       IOExternalMethodArguments *arguments,
                                       IOExternalMethodDispatch *dispatch,
