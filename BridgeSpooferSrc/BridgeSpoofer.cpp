@@ -51,7 +51,7 @@ IOReturn BridgeSpoofer::ourExternalMethod(IOUserClient *client, uint32_t selecto
         }
     }
     else {
-        SYSLOG("Call/output vuffers are not present"); // I'm writing in C++ for the first time without AI, but I want to show that there needs to be some error handling. Please verify the syntax and fix if something's wrong.
+        SYSLOG("Call/output buffers are not present"); // I'm writing in C++ for the first time without AI, but I want to show that there needs to be some error handling. Please verify the syntax and fix if something's wrong.
     }
 
     return result;
