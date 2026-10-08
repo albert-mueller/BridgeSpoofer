@@ -1,0 +1,6 @@
+build/
+*.zip
+Lilu.kext/
+MacKernelSDK/
+*.o
+.DS_Store

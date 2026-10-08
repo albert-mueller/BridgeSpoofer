@@ -2,7 +2,7 @@
 #include <Headers/kern_api.hpp>
 #include <Headers/kern_util.hpp>
 
-mach_vm_address_t BridgeSpoofer::orgExternalMethod {0};
+mach_vm_address_t BridgeSpoof::orgExternalMethod {0};
 
 // User client classes we want to inspect (verify the exact names with `ioreg -l` on the target machine)
 static const char *targetClients[] {
@@ -25,16 +25,16 @@ static bool isTargetClient(const IOUserClient *client) {
     return false;
 }
 
-void BridgeSpoofer::init() {
+void BridgeSpoof::init() {
     DBGLOG("bridgespoof", "Initializing BridgeSpoofer plugin");
 
     // Kernel functions can only be routed once Lilu's patcher is ready, not directly in pluginStart
     lilu.onPatcherLoadForce([](void *user, KernelPatcher &patcher) {
-        static_cast<BridgeSpoofer *>(user)->processKernel(patcher);
+        static_cast<BridgeSpoof *>(user)->processKernel(patcher);
     }, this);
 }
 
-void BridgeSpoofer::processKernel(KernelPatcher &patcher) {
+void BridgeSpoof::processKernel(KernelPatcher &patcher) {
     // IOUserClient::externalMethod(uint32_t, IOExternalMethodArguments*, IOExternalMethodDispatch*, OSObject*, void*)
     KernelPatcher::RouteRequest request {
         "__ZN12IOUserClient14externalMethodEjP25IOExternalMethodArgumentsP24IOExternalMethodDispatchP8OSObjectPv",
@@ -49,7 +49,7 @@ void BridgeSpoofer::processKernel(KernelPatcher &patcher) {
     }
 }
 
-IOReturn BridgeSpoofer::ourExternalMethod(IOUserClient *client, uint32_t selector,
+IOReturn BridgeSpoof::ourExternalMethod(IOUserClient *client, uint32_t selector,
                                           IOExternalMethodArguments *arguments,
                                           IOExternalMethodDispatch *dispatch,
                                           OSObject *target, void *reference) {

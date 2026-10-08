@@ -4,7 +4,7 @@
 #include <Headers/kern_patcher.hpp>
 #include <IOKit/IOUserClient.h>   // also defines IOExternalMethodArguments / IOExternalMethodDispatch
 
-class BridgeSpoofer {
+class BridgeSpoof {
 public:
     void init();
 

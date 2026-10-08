@@ -2,7 +2,7 @@
 #include <Headers/kern_api.hpp>
 #include "BridgeSpoofer.hpp"
 
-static BridgeSpoofer bridgeSpoofer;
+static BridgeSpoof bridgeSpoofer;
 
 static const char *bootargOff[]   { "-bridgeoff" };
 static const char *bootargDebug[] { "-bridgedbg" };
